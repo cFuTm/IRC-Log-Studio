@@ -2,6 +2,8 @@
 
 IRC Log Studio 是 Windows 本地桌面编辑器。你可以用中文界面编写 IRC 风格的日志，在频道之间切换，管理用户档案，再将日志导出为文本或结构化项目。应用离线运行。
 
+从 [GitHub Releases](https://github.com/cFuTm/IRC-Simulator/releases/latest) 下载 Windows x64 版。带 `-setup.exe` 的文件包含 WebView2 离线安装组件。便携版 EXE 可以直接运行，系统需已安装 WebView2 Runtime。
+
 ## 安装依赖
 
 1. 安装 Node.js 24 或更新版本。
@@ -85,11 +87,11 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 界面测试使用本机 Edge 和临时文件。测试专用 IPC 接口替代原生对话框和 Rust 文件命令。若使用 Chrome，先设置 `$env:IRC_STUDIO_BROWSER = 'chrome'`。
 
-2026-11-12 验证结果为类型检查通过、10 项单元测试通过、前端构建通过、Edge 界面验收通过。Vite 构建有 Zod 注释警告。Rust 单元测试和 Windows 原生界面仍待验证。
+2026-11-12 验证结果为类型检查通过、10 项单元测试通过、前端构建通过、Edge 界面验收通过。Vite 构建有 Zod 注释警告。GitHub Actions 的 Windows x64 构建和 Rust 存档测试通过。
 
 ## 当前限制
 
 - 自动存档恢复最后使用的工作区。单独保留项目时，请保存到项目文件。
 - 模板格式包含文本变量和时间标记。颜色由应用样式定义。
 - 事件通过追加录入，历史事件可原位编辑或删除。
-- Windows 原生构建和文件替换测试需要 Rust、Cargo 和 MSVC。当前开发环境缺少这些工具，尚未生成可执行文件或安装程序。
+- 原生桌面窗口和安装程序的交互流程仍待实机验证。
