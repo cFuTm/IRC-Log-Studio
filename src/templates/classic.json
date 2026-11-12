@@ -1,0 +1,24 @@
+{
+  "name": "Classic IRC",
+  "timestampFormat": "HH:mm:ss",
+  "timestampWrapper": "[{time}] ",
+  "events": {
+    "message": "<{nick}> {text}",
+    "action": "* {nick} {text}",
+    "join": "--> {nick}{hostmaskPart} has joined {channel}",
+    "part": "<-- {nick} has left {channel}{reasonPart}",
+    "quit": "*** {nick} has quit{quitReasonPart}",
+    "nick": "*** {oldNick} is now known as {newNick}",
+    "kick": "*** {target} was kicked by {actor}{reasonPart}",
+    "topic": "*** {actor} has changed the topic to: {topic}",
+    "mode": "*** {actor} sets mode {modeAndTarget}",
+    "away": "*** {nick} is away{detailPart}",
+    "awayBack": "*** {nick} is no longer away",
+    "notice": "-{nick}- {text}",
+    "invite": "*** {actor} invites {target} to {channel}",
+    "netsplit": "*** {netsplitText}",
+    "connection": "*** {text}",
+    "error": "*** {text}",
+    "custom": "{sourcePart}{text}"
+  }
+}

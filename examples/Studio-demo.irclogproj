@@ -1,0 +1,287 @@
+{
+  "schemaVersion": 1,
+  "id": "studio-demo",
+  "name": "Archive Night",
+  "users": [
+    {
+      "id": "user-alice",
+      "nickname": "Alice",
+      "username": "~alice",
+      "hostname": "example.net",
+      "notes": "频道归档者"
+    },
+    {
+      "id": "user-bob",
+      "nickname": "Bobby",
+      "username": "",
+      "hostname": "",
+      "notes": "曾用昵称 Bob"
+    }
+  ],
+  "channels": [
+    {
+      "id": "general",
+      "name": "#general",
+      "events": [
+        {
+          "id": "event-1",
+          "order": 1,
+          "timestamp": "2026-11-12T21:04:12",
+          "type": "JOIN",
+          "actor": {
+            "userId": "user-alice",
+            "nick": "Alice",
+            "hostmask": "~alice@example.net"
+          }
+        },
+        {
+          "id": "event-2",
+          "order": 2,
+          "timestamp": "2026-11-12T21:04:14",
+          "type": "JOIN",
+          "actor": {
+            "userId": "user-bob",
+            "nick": "Bob",
+            "hostmask": ""
+          }
+        },
+        {
+          "id": "event-3",
+          "order": 3,
+          "timestamp": "2026-11-12T21:04:15",
+          "type": "MESSAGE",
+          "actor": {
+            "userId": "user-alice",
+            "nick": "Alice",
+            "hostmask": "~alice@example.net"
+          },
+          "text": "Hello everyone! 欢迎来到 #general。"
+        },
+        {
+          "id": "event-4",
+          "order": 4,
+          "timestamp": "2026-11-12T21:04:20",
+          "type": "MESSAGE",
+          "actor": {
+            "userId": "user-bob",
+            "nick": "Bob",
+            "hostmask": ""
+          },
+          "text": "Hi! I found an old IRC transcript."
+        },
+        {
+          "id": "event-5",
+          "order": 5,
+          "timestamp": "2026-11-12T21:04:25",
+          "type": "ACTION",
+          "actor": {
+            "userId": "user-alice",
+            "nick": "Alice",
+            "hostmask": "~alice@example.net"
+          },
+          "text": "waves at Bob"
+        },
+        {
+          "id": "event-6",
+          "order": 6,
+          "timestamp": "2026-11-12T21:04:30",
+          "type": "NICK",
+          "actor": {
+            "userId": "user-bob",
+            "nick": "Bob",
+            "hostmask": ""
+          },
+          "newNick": "Bobby"
+        },
+        {
+          "id": "event-7",
+          "order": 7,
+          "timestamp": "2026-11-12T21:04:36",
+          "type": "TOPIC",
+          "actor": {
+            "userId": "user-alice",
+            "nick": "Alice",
+            "hostmask": "~alice@example.net"
+          },
+          "topic": "Welcome to the archive night!"
+        },
+        {
+          "id": "event-8",
+          "order": 8,
+          "timestamp": "2026-11-12T21:04:42",
+          "type": "MODE",
+          "actor": {
+            "userId": "user-alice",
+            "nick": "Alice",
+            "hostmask": "~alice@example.net"
+          },
+          "target": {
+            "userId": "user-bob",
+            "nick": "Bobby",
+            "hostmask": ""
+          },
+          "mode": "+v"
+        },
+        {
+          "id": "event-9",
+          "order": 9,
+          "timestamp": "2026-11-12T21:04:45",
+          "type": "KICK",
+          "actor": {
+            "userId": "user-alice",
+            "nick": "Alice",
+            "hostmask": "~alice@example.net"
+          },
+          "target": {
+            "userId": "user-bob",
+            "nick": "Bobby",
+            "hostmask": ""
+          },
+          "reason": "No spoilers!"
+        },
+        {
+          "id": "event-10",
+          "order": 10,
+          "timestamp": "2026-11-12T21:04:52",
+          "type": "QUIT",
+          "actor": {
+            "userId": "user-bob",
+            "nick": "Bobby",
+            "hostmask": ""
+          },
+          "reason": "Quit: Goodbye!"
+        },
+        {
+          "id": "event-11",
+          "order": 11,
+          "timestamp": "2026-11-12T21:05:00",
+          "type": "AWAY",
+          "actor": {
+            "userId": "user-alice",
+            "nick": "Alice",
+            "hostmask": "~alice@example.net"
+          },
+          "away": true,
+          "reason": "Having dinner"
+        },
+        {
+          "id": "event-12",
+          "order": 12,
+          "timestamp": "2026-11-12T21:05:10",
+          "type": "AWAY",
+          "actor": {
+            "userId": "user-alice",
+            "nick": "Alice",
+            "hostmask": "~alice@example.net"
+          },
+          "away": false,
+          "reason": ""
+        },
+        {
+          "id": "event-13",
+          "order": 13,
+          "timestamp": "2026-11-12T21:05:15",
+          "type": "NOTICE",
+          "actor": {
+            "userId": null,
+            "nick": "ServerBot",
+            "hostmask": ""
+          },
+          "text": "Server restart in 10 minutes."
+        }
+      ]
+    },
+    {
+      "id": "archive",
+      "name": "#archive",
+      "events": [
+        {
+          "id": "event-14",
+          "order": 14,
+          "timestamp": "2026-11-12T21:05:20",
+          "type": "INVITE",
+          "actor": {
+            "userId": "user-alice",
+            "nick": "Alice",
+            "hostmask": "~alice@example.net"
+          },
+          "target": {
+            "userId": "user-bob",
+            "nick": "Bobby",
+            "hostmask": ""
+          },
+          "destination": "#archive"
+        },
+        {
+          "id": "event-15",
+          "order": 15,
+          "timestamp": "2026-11-12T21:05:24",
+          "type": "JOIN",
+          "actor": {
+            "userId": "user-bob",
+            "nick": "Bobby",
+            "hostmask": ""
+          }
+        },
+        {
+          "id": "event-16",
+          "order": 16,
+          "timestamp": "2026-11-12T21:05:25",
+          "type": "NETSPLIT",
+          "actor": {
+            "userId": "user-bob",
+            "nick": "Bobby",
+            "hostmask": ""
+          },
+          "reason": "irc-a.example.net irc-b.example.net"
+        },
+        {
+          "id": "event-17",
+          "order": 17,
+          "timestamp": "2026-11-12T21:05:28",
+          "type": "ERROR",
+          "state": "Connection reset",
+          "reason": ""
+        },
+        {
+          "id": "event-18",
+          "order": 18,
+          "timestamp": "2026-11-12T21:05:29",
+          "type": "CONNECTION",
+          "state": "Connecting",
+          "reason": "irc-a.example.net"
+        },
+        {
+          "id": "event-19",
+          "order": 19,
+          "timestamp": "2026-11-12T21:05:33",
+          "type": "CONNECTION",
+          "state": "Connected",
+          "reason": ""
+        },
+        {
+          "id": "event-20",
+          "order": 20,
+          "timestamp": "2026-11-12T21:05:38",
+          "type": "CUSTOM",
+          "source": "System",
+          "text": "Archive synchronization finished."
+        },
+        {
+          "id": "event-21",
+          "order": 21,
+          "timestamp": "2026-11-12T21:05:44",
+          "type": "PART",
+          "actor": {
+            "userId": "user-bob",
+            "nick": "Bobby",
+            "hostmask": ""
+          },
+          "reason": ""
+        }
+      ]
+    }
+  ],
+  "templateId": "classic.json",
+  "nextOrder": 22
+}

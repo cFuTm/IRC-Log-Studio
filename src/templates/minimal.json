@@ -1,0 +1,24 @@
+{
+  "name": "Minimal",
+  "timestampFormat": "HH:mm",
+  "timestampWrapper": "{time}  ",
+  "events": {
+    "message": "{nick} › {text}",
+    "action": "· {nick} {text}",
+    "join": "+ {nick}{hostmaskPart} → {channel}",
+    "part": "− {nick} ← {channel}{reasonPart}",
+    "quit": "− {nick}{reasonPart}",
+    "nick": "{oldNick} → {newNick}",
+    "kick": "− {target} by {actor}{reasonPart}",
+    "topic": "{actor} / topic › {topic}",
+    "mode": "{actor} / {modeAndTarget}",
+    "away": "· {nick} / away{detailPart}",
+    "awayBack": "· {nick} / back",
+    "notice": "! {nick} › {text}",
+    "invite": "{actor} → {target} / {channel}",
+    "netsplit": "! {netsplitText}",
+    "connection": "· {text}",
+    "error": "! {text}",
+    "custom": "{sourcePart}{text}"
+  }
+}

@@ -1,0 +1,69 @@
+name: Windows release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install Rust for Windows x64
+        run: rustup default stable-x86_64-pc-windows-msvc
+
+      - name: Verify the release version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$version" -or $version -ne $tauriVersion) {
+            throw "The release tag must match the versions in package.json and tauri.conf.json."
+          }
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run frontend tests
+        run: pnpm test
+
+      - name: Build the Windows executable and installer
+        run: pnpm tauri build
+
+      - name: Run native storage tests
+        run: cargo test --release --manifest-path src-tauri/Cargo.toml
+
+      - name: Publish the Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $releaseDir = 'src-tauri/target/release'
+          $installer = @(Get-ChildItem "$releaseDir/bundle/nsis" -Filter '*-setup.exe' -File)
+          if ($installer.Count -ne 1) { throw "Expected one NSIS installer." }
+          $portableAsset = Join-Path $env:RUNNER_TEMP "IRC-Log-Studio-$tag-windows-x64.exe"
+          $installerAsset = Join-Path $env:RUNNER_TEMP "IRC-Log-Studio-$tag-windows-x64-setup.exe"
+          Copy-Item -LiteralPath "$releaseDir/irc-log-studio.exe" -Destination $portableAsset
+          Copy-Item -LiteralPath $installer[0].FullName -Destination $installerAsset
+          $notes = Join-Path $env:RUNNER_TEMP 'irc-log-studio-release.md'
+          @'
+          Windows x64 版 IRC Log Studio。
+
+          - 下载 `-setup.exe` 安装程序。安装包包含 WebView2 离线安装组件。
+          - 下载不带 `-setup` 的 EXE 直接运行。系统需已安装 WebView2 Runtime。
+
+          支持多频道、16 种 IRC 事件、本地存档、外部模板和 TXT / JSON 导出。
+          '@ | Set-Content -LiteralPath $notes -Encoding utf8
+          gh release create $tag $portableAsset $installerAsset --verify-tag --title "IRC Log Studio $tag" --notes-file $notes
