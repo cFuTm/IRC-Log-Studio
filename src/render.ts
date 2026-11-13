@@ -1,6 +1,10 @@
 import { z } from 'zod'
+import { defaultTemplateId } from './model.ts'
 import type { LogEvent, Project } from './model.ts'
+import { eventIdentities, replayRanks, type EventPrefixes } from './ranks.ts'
 import classic from './templates/classic.json' with { type: 'json' }
+import ranked from './templates/classic-ranked.json' with { type: 'json' }
+import chinese from './templates/classic-zh-cn.json' with { type: 'json' }
 
 const templateSchema = z.object({
   name: z.string().trim().min(1),
@@ -10,8 +14,7 @@ const templateSchema = z.object({
 })
 export type Template = z.infer<typeof templateSchema>
 export type TemplateFile = { id: string; text: string | null; error: string | null }
-export const defaultTemplateId = 'classic.json'
-export const defaultTemplate: Template = classic
+export const defaultTemplate: Template = ranked
 
 export function parseTemplate(text: string): Template {
   const result = templateSchema.safeParse(JSON.parse(text.replace(/^\uFEFF/, '')))
@@ -22,7 +25,9 @@ export function parseTemplate(text: string): Template {
 }
 
 export function loadTemplates(files: TemplateFile[], previous: Map<string, Template>) {
-  const templates = new Map([[defaultTemplateId, defaultTemplate]])
+  const templates = new Map<string, Template>([
+    [defaultTemplateId, defaultTemplate], ['classic.json', classic], ['classic-zh-cn.json', chinese],
+  ])
   const errors: string[] = []
   for (const { id, text, error } of files) {
     try {
@@ -38,7 +43,10 @@ export function loadTemplates(files: TemplateFile[], previous: Map<string, Templ
 }
 
 export type Segment = { text: string; tone?: 'time' | 'nick' | 'content' }
-const nicknameKeys = new Set(['actor', 'nick', 'oldNick', 'newNick', 'target', 'source', 'sourcePart'])
+const nicknameKeys = new Set([
+  'actor', 'nick', 'oldNick', 'newNick', 'target', 'source', 'sourcePart',
+  'prefix', 'displayNick', 'actorDisplayNick', 'targetDisplayNick',
+])
 const contentKeys = new Set(['text', 'topic'])
 const variable = /\{([A-Za-z][A-Za-z0-9]*)\}/g
 
@@ -61,16 +69,20 @@ function segments(format: string, values: Record<string, string>): Segment[] {
 }
 
 export function formatEvent(
-  event: LogEvent, channel: string, template: Template, showTimestamp = true,
+  event: LogEvent, channel: string, template: Template, showTimestamp = true, prefixes?: EventPrefixes,
 ): Segment[] {
-  const actor = 'actor' in event ? event.actor : null
+  const { actor, target: targetIdentity } = eventIdentities(event)
   const reason = 'reason' in event ? event.reason.trim() : ''
-  const target = 'target' in event ? event.target?.nick ?? '' : ''
+  const target = ('target' in event ? event.target?.nick : undefined) ?? ''
   const nick = actor?.nick ?? ''
   const hostmask = actor?.hostmask ?? ''
   const detailPart = reason ? `: ${reason}` : ''
+  const prefix = prefixes?.actor ?? ''
+  const displayNick = prefix + nick
   const values: Record<string, string> = {
     channel, nick, actor: nick, oldNick: nick, hostmask, target, reason, detailPart,
+    prefix, displayNick, actorDisplayNick: displayNick,
+    targetDisplayNick: (prefixes?.target ?? '') + (targetIdentity?.nick ?? ''),
     hostmaskPart: hostmask ? ` (${hostmask})` : '',
     reasonPart: reason ? ` (${reason})` : '',
     quitReasonPart: reason ? ` (${/^quit:/i.test(reason) ? reason : `Quit: ${reason}`})` : '',
@@ -90,7 +102,7 @@ export function formatEvent(
       break
     case 'MODE':
       values.mode = event.mode
-      values.modeAndTarget = [event.mode, target].filter(Boolean).join(' ')
+      values.modeAndTarget = [event.mode, event.target?.nick].filter(Boolean).join(' ')
       break
     case 'AWAY':
       if (!event.away) key = 'awayBack'
@@ -113,7 +125,7 @@ export function formatEvent(
       break
   }
 
-  const body = segments(template.events[key] ?? defaultTemplate.events[key], values)
+  const body = segments(template.events[key] ?? classic.events[key as keyof typeof classic.events], values)
   if (!showTimestamp || !template.timestampFormat || !template.timestampWrapper) return body
   const tokens: Record<string, string> = {
     YYYY: event.timestamp.slice(0, 4), MM: event.timestamp.slice(5, 7), DD: event.timestamp.slice(8, 10),
@@ -123,15 +135,16 @@ export function formatEvent(
   return [...segments(template.timestampWrapper, { time }).map(({ text }) => ({ text, tone: 'time' as const })), ...body]
 }
 
-export function renderEvent(event: LogEvent, channel: string, template: Template, showTimestamp = true): string {
-  return formatEvent(event, channel, template, showTimestamp).map(({ text }) => text).join('')
+export function renderEvent(event: LogEvent, channel: string, template: Template, showTimestamp = true, prefixes?: EventPrefixes): string {
+  return formatEvent(event, channel, template, showTimestamp, prefixes).map(({ text }) => text).join('')
 }
 
 export function exportText(project: Project, channelId: string | null, template: Template, showTimestamp: boolean): string {
   return project.channels
     .filter(({ id }) => channelId === null || channelId === id)
     .map((channel) => {
-      const lines = channel.events.map((event) => renderEvent(event, channel.name, template, showTimestamp))
+      const { beforeEvent } = replayRanks(channel)
+      const lines = channel.events.map((event) => renderEvent(event, channel.name, template, showTimestamp, beforeEvent.get(event.id)))
       return (channelId === null ? [`=== ${channel.name} ===`, ...lines] : lines).join('\r\n')
     }).join('\r\n\r\n')
 }

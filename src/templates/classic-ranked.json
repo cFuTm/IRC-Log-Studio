@@ -1,0 +1,10 @@
+{
+  "name": "Classic IRC · 等级前缀",
+  "timestampFormat": "HH:mm:ss",
+  "timestampWrapper": "[{time}] ",
+  "events": {
+    "message": "<{displayNick}> {text}",
+    "action": "* {displayNick} {text}",
+    "notice": "-{displayNick}- {text}"
+  }
+}

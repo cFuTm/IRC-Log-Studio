@@ -2,11 +2,17 @@ import { useEffect, useState } from 'react'
 import { BookUser, Clock3, FilePenLine, Plus, Save, Trash2, X } from 'lucide-react'
 import {
   connectionStates, eventFromDraft, eventLabels, localDateTime, snapshot,
-  type Actor, type Channel, type Draft, type EventType, type User,
+  type Actor, type Channel, type Draft, type EventType, type LogEvent, type User,
 } from '../model.ts'
+import { eventIdentities, parseRankChanges, rankModes, ranks, serializeRankChanges, sortUsersByRank, type RankChange } from '../ranks.ts'
 import { renderEvent, type Template } from '../render.ts'
 
-export function EventEditor({ draft, channel, channels, users, members, editing, template, change, submit, cancel, remove, pickUser }: {
+const noPrefixes = new Map<string, string>()
+
+export function EventEditor({
+  draft, channel, channels, users, members, editing, template, change, submit, cancel, remove, pickUser,
+  currentRanks = noPrefixes, previewRanks = noPrefixes, existing, resolveNick,
+}: {
   draft: Draft
   channel: Channel | undefined
   channels: Channel[]
@@ -18,7 +24,11 @@ export function EventEditor({ draft, channel, channels, users, members, editing,
   submit: () => void
   cancel: () => void
   remove: () => void
-  pickUser: (slot: 'actor' | 'target') => void
+  pickUser: (slot: 'actor' | 'target' | number) => void
+  currentRanks?: ReadonlyMap<string, string>
+  previewRanks?: ReadonlyMap<string, string>
+  existing?: LogEvent
+  resolveNick: (nick: string) => string | undefined
 }) {
   const [clock, setClock] = useState(localDateTime)
   useEffect(() => {
@@ -31,13 +41,21 @@ export function EventEditor({ draft, channel, channels, users, members, editing,
   const { type } = draft
   const connection = type === 'CONNECTION' || type === 'ERROR'
   const actor = !connection && type !== 'CUSTOM'
-  const target = type === 'KICK' || type === 'MODE' || type === 'INVITE'
+  const target = type === 'KICK' || type === 'INVITE' || (type === 'MODE' && draft.rawMode)
   const reason = ['PART', 'QUIT', 'KICK', 'NETSPLIT'].includes(type) || connection || (type === 'AWAY' && draft.away)
   const text = type === 'MESSAGE' || type === 'ACTION' || type === 'NOTICE' || type === 'CUSTOM'
   const bodyLabel = type === 'ACTION' ? '动作内容' : type === 'CUSTOM' ? '自定义正文' : '消息内容'
   let preview = ''
   try {
-    if (channel) preview = renderEvent(eventFromDraft({ ...draft, fixedTime: true, timestamp: draft.fixedTime ? draft.timestamp : clock }, 1), channel.name, template)
+    if (channel) {
+      const event = eventFromDraft({ ...draft, fixedTime: true, timestamp: draft.fixedTime ? draft.timestamp : clock }, 1, existing, resolveNick)
+      const identities = eventIdentities(event)
+      const prefix = (user: Pick<Actor, 'userId'> | null) => user?.userId ? previewRanks.get(user.userId) : undefined
+      preview = renderEvent(event, channel.name, template, true, {
+        actor: prefix(identities.actor),
+        target: prefix(identities.target),
+      })
+    }
   } catch {
     // An incomplete draft has no formatted preview.
   }
@@ -79,11 +97,11 @@ export function EventEditor({ draft, channel, channels, users, members, editing,
           </button>}
           {actor && <UserPicker
             label={type === 'MESSAGE' || type === 'NOTICE' ? '发送者' : '操作者'}
-            value={draft.actor} users={users} members={members} optional={type === 'NETSPLIT'}
+            value={draft.actor} users={users} members={members} prefixes={currentRanks} optional={type === 'NETSPLIT'}
             allowFree={type === 'NOTICE'} onChange={(value) => change({ actor: value })} open={() => pickUser('actor')}
           />}
           {target && <UserPicker
-            label="目标用户" value={draft.target} users={users} members={members} optional={type === 'MODE'}
+            label="目标用户" value={draft.target} users={users} members={members} prefixes={currentRanks} optional={type === 'MODE'}
             onChange={(value) => change({ target: value })} open={() => pickUser('target')}
           />}
           {type === 'INVITE' && <label>目标频道
@@ -96,9 +114,8 @@ export function EventEditor({ draft, channel, channels, users, members, editing,
           {type === 'TOPIC' && <label>频道主题
             <input value={draft.topic} onChange={(event) => change({ topic: event.target.value })} placeholder="留空可清除主题" />
           </label>}
-          {type === 'MODE' && <label>模式字符串
-            <input required value={draft.mode} onChange={(event) => change({ mode: event.target.value })} placeholder="+o、-v、+m" />
-          </label>}
+          {type === 'MODE' && <ModeFields key={existing?.id ?? 'new'} draft={draft} existing={existing} users={users}
+            members={members} prefixes={currentRanks} resolveNick={resolveNick} change={change} pickUser={pickUser} />}
           {type === 'AWAY' && <label>离开状态
             <select value={draft.away ? 'away' : 'back'} onChange={(event) => change({ away: event.target.value === 'away' })}>
               <option value="away">离开</option><option value="back">取消离开</option>
@@ -134,18 +151,100 @@ export function EventEditor({ draft, channel, channels, users, members, editing,
   </aside>
 }
 
-function UserPicker({ label, value, users, members, optional, allowFree, onChange, open }: {
+function ModeFields({ draft, existing, users, members, prefixes, resolveNick, change, pickUser }: {
+  draft: Draft
+  existing?: LogEvent
+  users: User[]
+  members: ReadonlySet<string>
+  prefixes: ReadonlyMap<string, string>
+  resolveNick: (nick: string) => string | undefined
+  change: (patch: Partial<Draft>) => void
+  pickUser: (slot: number) => void
+}) {
+  const [error, setError] = useState('')
+  const defaultChange: RankChange = { operation: 'add', mode: 'o', targetUserId: '', targetNick: '' }
+  const entries = draft.modeChanges.length ? draft.modeChanges : [defaultChange]
+  function updateEntry(index: number, patch: Partial<RankChange>) {
+    change({ modeChanges: entries.map((entry, itemIndex) => itemIndex === index ? { ...entry, ...patch } : entry) })
+  }
+
+  function toggleMode() {
+    setError('')
+    if (!draft.rawMode) {
+      change({ rawMode: true, mode: draft.modeChanges.every(({ targetUserId }) => targetUserId)
+        ? serializeRankChanges(draft.modeChanges) : '', target: null })
+      return
+    }
+    const expression = [draft.mode.trim(), draft.target?.nick].filter(Boolean).join(' ')
+    if (!expression) {
+      change({ rawMode: false, target: null })
+      return
+    }
+    const unchanged = existing?.type === 'MODE' && draft.mode.trim() === existing.mode
+      && draft.target?.userId === existing.target?.userId && draft.target?.nick === existing.target?.nick
+    const changes = expression === serializeRankChanges(draft.modeChanges) ? draft.modeChanges
+      : unchanged ? existing.changes : parseRankChanges(draft.mode, draft.target, resolveNick)
+    const [letters, ...args] = expression.split(/\s+/)
+    const canonical = letters.replace(/([+-])([qaohv]+)(?:\1([qaohv]+))+/g, (group) =>
+      group[0] + group.slice(1).replace(/[+-]/g, ''))
+    if ([canonical, ...args].join(' ') !== serializeRankChanges(changes)) {
+      setError('这条指令包含原始模式或未匹配的目标，请继续使用原始输入。')
+      return
+    }
+    change({ rawMode: false, modeChanges: changes, target: null })
+  }
+
+  return <div className="form-stack">
+    <button type="button" onClick={toggleMode}>{draft.rawMode ? '切换到等级操作' : '切换到原始输入'}</button>
+    {error && <p role="alert" className="inline-error">{error}</p>}
+    {draft.rawMode ? <label>模式字符串
+      <input required value={draft.mode} onChange={(event) => { setError(''); change({ mode: event.target.value }) }}
+        placeholder="+ov Alice Bob、-o+v Alice Bob、+m" />
+    </label> : <>
+      {entries.map((entry, index) => {
+        const user = users.find(({ id }) => id === entry.targetUserId)
+        return <fieldset key={index} className="form-stack mode-change">
+          <legend>等级变更 {index + 1}</legend>
+          <div className="field-pair">
+            <label>操作
+              <select value={entry.operation} onChange={(event) => updateEntry(index, { operation: event.target.value as RankChange['operation'] })}>
+                <option value="add">赋予等级</option><option value="remove">移除等级</option>
+              </select>
+            </label>
+            <label>等级
+              <select value={entry.mode} onChange={(event) => updateEntry(index, { mode: event.target.value as RankChange['mode'] })}>
+                {rankModes.map((mode) => <option key={mode} value={mode}>{ranks[mode].name} ({entry.operation === 'add' ? '+' : '-'}{mode})</option>)}
+              </select>
+            </label>
+          </div>
+          <UserPicker label="等级目标" value={entry.targetUserId ? {
+            userId: entry.targetUserId, nick: entry.targetNick, hostmask: user ? snapshot(user).hostmask : '',
+          } : null} users={users} members={members} prefixes={prefixes}
+            onChange={(value) => updateEntry(index, { targetUserId: value?.userId ?? '', targetNick: value?.nick ?? '' })}
+            open={() => { if (!draft.modeChanges.length) change({ modeChanges: entries }); pickUser(index) }} />
+          {entries.length > 1 && <button type="button" className="danger-text"
+            onClick={() => change({ modeChanges: entries.filter((_, itemIndex) => itemIndex !== index) })}>删除此变更</button>}
+        </fieldset>
+      })}
+      <button type="button" onClick={() => change({ modeChanges: [...entries, defaultChange] })}><Plus size={15} />添加等级变更</button>
+    </>}
+  </div>
+}
+
+function UserPicker({ label, value, users, members, prefixes, optional, allowFree, onChange, open }: {
   label: string
   value: Actor | null
   users: User[]
   members: ReadonlySet<string>
+  prefixes: ReadonlyMap<string, string>
   optional?: boolean
   allowFree?: boolean
   onChange: (actor: Actor | null) => void
   open: () => void
 }) {
-  const memberUsers = users.filter(({ id }) => members.has(id))
-  const others = users.filter(({ id }) => !members.has(id))
+  const sorted = sortUsersByRank(users, prefixes)
+  const memberUsers = sorted.filter(({ id }) => members.has(id))
+  const others = sorted.filter(({ id }) => !members.has(id))
   const profile = users.find(({ id }) => id === value?.userId)
   const historical = !!value?.userId && (!profile || value.nick !== profile.nickname || value.hostmask !== snapshot(profile).hostmask)
   const selected = historical ? 'historical' : value ? (value.userId ? `user:${value.userId}` : 'free') : ''
@@ -160,11 +259,11 @@ function UserPicker({ label, value, users, members, optional, allowFree, onChang
           onChange(user ? snapshot(user) : key === 'free' ? { userId: null, nick: '', hostmask: '' } : null)
         }}>
           <option value="">{optional ? '无' : '选择用户…'}</option>
-          {historical && <option value="historical">{value?.nick}（历史快照）</option>}
+          {historical && <option value="historical">{prefixes.get(value?.userId ?? '')}{value?.nick}（历史快照）</option>}
           {memberUsers.length > 0 && <optgroup label="当前频道成员">{memberUsers.map((user) =>
-            <option key={user.id} value={`user:${user.id}`}>{user.nickname}</option>)}</optgroup>}
+            <option key={user.id} value={`user:${user.id}`}>{prefixes.get(user.id)}{user.nickname}</option>)}</optgroup>}
           {others.length > 0 && <optgroup label="其他档案">{others.map((user) =>
-            <option key={user.id} value={`user:${user.id}`}>{user.nickname}</option>)}</optgroup>}
+            <option key={user.id} value={`user:${user.id}`}>{prefixes.get(user.id)}{user.nickname}</option>)}</optgroup>}
           {(allowFree || selected === 'free') && <option value="free">自定义名称</option>}
         </select>
       </label>

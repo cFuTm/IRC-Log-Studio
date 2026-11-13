@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { legacyModeResolver, parseRankChanges, rankModes, serializeRankChanges, type RankChange } from './ranks.ts'
 
 const id = z.string().min(1)
 const label = z.string().trim().min(1)
@@ -6,6 +7,13 @@ const content = z.string().refine((value) => value.trim().length > 0, '请输入
 const actor = z.object({ userId: id.nullable(), nick: label, hostmask: z.string() })
 const timestamp = z.iso.datetime({ local: true, precision: 0 }).refine((value) => !value.endsWith('Z'))
 const base = { id, order: z.number().int().positive(), timestamp }
+const rankMode = z.enum(rankModes)
+const rankChange = z.object({
+  operation: z.enum(['add', 'remove']), mode: rankMode, targetUserId: id, targetNick: label,
+})
+const modeEvent = z.object({
+  ...base, type: z.literal('MODE'), actor, mode: label, target: actor.nullable(), changes: z.array(rankChange),
+})
 
 export const connectionStates = [
   'Connecting', 'Connected', 'Disconnected', 'Ping timeout', 'Connection reset', 'Connection failed',
@@ -20,7 +28,7 @@ export const eventSchema = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('NICK'), actor, newNick: label }),
   z.object({ ...base, type: z.literal('KICK'), actor, target: actor, reason: z.string() }),
   z.object({ ...base, type: z.literal('TOPIC'), actor, topic: z.string() }),
-  z.object({ ...base, type: z.literal('MODE'), actor, mode: label, target: actor.nullable() }),
+  modeEvent,
   z.object({ ...base, type: z.literal('AWAY'), actor, away: z.boolean(), reason: z.string() }),
   z.object({ ...base, type: z.literal('NOTICE'), actor, text: content }),
   z.object({ ...base, type: z.literal('INVITE'), actor, target: actor, destination: label }),
@@ -33,9 +41,11 @@ export const eventSchema = z.discriminatedUnion('type', [
 const user = z.object({
   id, nickname: label, username: z.string(), hostname: z.string(), notes: z.string(),
 })
-const channel = z.object({ id, name: label, events: z.array(eventSchema) })
+const channel = z.object({
+  id, name: label, events: z.array(eventSchema), initialModes: z.record(id, z.array(rankMode)),
+})
 const projectSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   id,
   name: label,
   users: z.array(user),
@@ -55,6 +65,13 @@ const projectSchema = z.object({
   }
 })
 
+const legacyEvent = z.union([eventSchema, modeEvent.omit({ changes: true })])
+const legacyProject = z.object({
+  ...projectSchema.shape,
+  schemaVersion: z.literal(1),
+  channels: z.array(channel.extend({ events: z.array(legacyEvent) }).omit({ initialModes: true })),
+})
+
 export type Project = z.infer<typeof projectSchema>
 export type Channel = z.infer<typeof channel>
 export type User = z.infer<typeof user>
@@ -62,6 +79,7 @@ export type Actor = z.infer<typeof actor>
 export type LogEvent = z.infer<typeof eventSchema>
 export type EventType = LogEvent['type']
 export type ConnectionState = (typeof connectionStates)[number]
+export const defaultTemplateId = 'classic-ranked.json'
 
 export const eventLabels: Record<EventType, string> = {
   MESSAGE: '普通消息', ACTION: '动作', JOIN: '加入频道', PART: '离开频道',
@@ -71,20 +89,40 @@ export const eventLabels: Record<EventType, string> = {
 }
 
 export function newProject(name: string): Project {
-  return { schemaVersion: 1, id: crypto.randomUUID(), name, users: [], channels: [], templateId: 'classic.json', nextOrder: 1 }
+  return { schemaVersion: 2, id: crypto.randomUUID(), name, users: [], channels: [], templateId: defaultTemplateId, nextOrder: 1 }
 }
 
 export function parseProject(text: string): Project {
-  const raw: unknown = JSON.parse(text.replace(/^\uFEFF/, ''))
-  if (raw && typeof raw === 'object' && 'schemaVersion' in raw && raw.schemaVersion !== 1) {
-    throw new Error(`此版本无法打开 schemaVersion ${String(raw.schemaVersion)} 的项目。`)
+  let raw: unknown = JSON.parse(text.replace(/^\uFEFF/, ''))
+  if (raw && typeof raw === 'object' && 'schemaVersion' in raw) {
+    if (raw.schemaVersion === 1) {
+      const result = legacyProject.safeParse(raw)
+      if (!result.success) throw projectError(result.error)
+      const project = result.data
+      raw = {
+        ...project, schemaVersion: 2,
+        channels: project.channels.map((channel) => {
+          const resolve = legacyModeResolver(channel.events, project.users)
+          return {
+            ...channel, initialModes: {},
+            events: channel.events.map((event) => event.type === 'MODE' ? {
+              ...event, changes: parseRankChanges(event.mode, event.target, resolve),
+            } : event),
+          }
+        }),
+      }
+    } else if (raw.schemaVersion !== 2) {
+      throw new Error(`此版本无法打开 schemaVersion ${String(raw.schemaVersion)} 的项目。`)
+    }
   }
   const result = projectSchema.safeParse(raw)
-  if (!result.success) {
-    const issue = result.error.issues[0]
-    throw new Error(`项目数据有误（${issue.path.join('.') || '根对象'}）\n${issue.message}`)
-  }
+  if (!result.success) throw projectError(result.error)
   return result.data
+}
+
+function projectError(error: z.ZodError): Error {
+  const issue = error.issues[0]
+  return new Error(`项目数据有误（${issue.path.join('.') || '根对象'}）\n${issue.message}`)
 }
 
 export function localDateTime(now = new Date()): string {
@@ -110,6 +148,8 @@ export type Draft = {
   newNick: string
   topic: string
   mode: string
+  modeChanges: RankChange[]
+  rawMode: boolean
   away: boolean
   destination: string
   state: ConnectionState
@@ -119,23 +159,51 @@ export type Draft = {
 export function newDraft(channel = '', actor: Actor | null = null, type: EventType = 'MESSAGE'): Draft {
   return {
     type, actor, target: null, timestamp: localDateTime(), fixedTime: false,
-    text: '', reason: '', newNick: '', topic: '', mode: '', away: true,
+    text: '', reason: '', newNick: '', topic: '', mode: '', modeChanges: [], rawMode: false, away: true,
     destination: channel, state: type === 'ERROR' ? 'Connection failed' : 'Connecting', source: '',
   }
 }
 
 export function draftFromEvent(event: LogEvent, channel: string): Draft {
-  return { ...newDraft(channel, null, event.type), ...event, fixedTime: true }
+  return {
+    ...newDraft(channel, null, event.type), ...event, fixedTime: true,
+    modeChanges: event.type === 'MODE' ? event.changes : [],
+    rawMode: event.type === 'MODE' && (!!event.target || !event.changes.length
+      || event.mode !== serializeRankChanges(event.changes)),
+  }
 }
 
 const fields: Record<string, string> = {
   actor: '操作者', target: '目标用户', text: '正文', reason: '说明', newNick: '新昵称',
-  timestamp: '日期与时间', mode: '模式', destination: '目标频道',
+  timestamp: '日期与时间', mode: '模式', changes: '等级变更目标', destination: '目标频道',
 }
 
-export function eventFromDraft(draft: Draft, order: number, existing?: LogEvent): LogEvent {
+export function eventFromDraft(
+  draft: Draft, order: number, existing?: LogEvent, resolveNick: (nick: string) => string | undefined = () => undefined,
+): LogEvent {
+  let mode = draft.mode
+  let target = draft.target
+  let changes: RankChange[] = []
+  if (draft.type === 'MODE') {
+    if (!draft.rawMode) {
+      changes = draft.modeChanges
+      mode = serializeRankChanges(changes)
+      target = null
+    } else {
+      const previous = existing?.type === 'MODE' ? existing : undefined
+      if (draft.modeChanges.length && !target && mode === serializeRankChanges(draft.modeChanges)) {
+        changes = draft.modeChanges
+      } else if (previous && previous.mode === mode.trim()
+        && previous.target?.userId === target?.userId && previous.target?.nick === target?.nick) {
+        changes = previous.changes
+      } else {
+        changes = parseRankChanges(mode, target, resolveNick)
+      }
+    }
+  }
   const result = eventSchema.safeParse({
     ...draft,
+    mode, target, changes,
     timestamp: draft.fixedTime ? draft.timestamp : localDateTime(),
     id: existing?.id ?? crypto.randomUUID(),
     order: existing?.order ?? order,

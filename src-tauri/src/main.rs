@@ -12,14 +12,26 @@ fn app_data(app: &AppHandle) -> Result<PathBuf, String> {
 
 fn template_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let path = app_data(app)?.join("templates");
-    if !path.exists() {
-        let initialize = || -> io::Result<()> {
-            fs::create_dir_all(&path)?;
+    let initialize = || -> io::Result<()> {
+        let first_run = !path.exists();
+        fs::create_dir_all(&path)?;
+        if first_run {
             storage::write(&path.join("classic.json"), include_bytes!("../../src/templates/classic.json"), false)?;
-            storage::write(&path.join("minimal.json"), include_bytes!("../../src/templates/minimal.json"), false)
-        };
-        initialize().map_err(|error| format!("{}: {error}", path.display()))?;
-    }
+            storage::write(&path.join("minimal.json"), include_bytes!("../../src/templates/minimal.json"), false)?;
+        }
+        let added: [(&str, &[u8]); 2] = [
+            ("classic-ranked.json", include_bytes!("../../src/templates/classic-ranked.json")),
+            ("classic-zh-cn.json", include_bytes!("../../src/templates/classic-zh-cn.json")),
+        ];
+        for (name, contents) in added {
+            let file = path.join(name);
+            if !file.exists() {
+                storage::write(&file, contents, false)?;
+            }
+        }
+        Ok(())
+    };
+    initialize().map_err(|error| format!("{}: {error}", path.display()))?;
     Ok(path)
 }
 

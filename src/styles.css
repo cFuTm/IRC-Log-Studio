@@ -211,6 +211,10 @@ textarea { resize: vertical; min-height: 63px; line-height: 1.55; }
 .member-label { font-size: 11px; color: #4d6957; }
 .library-empty { display: grid; justify-items: center; gap: 7px; padding: 24px; color: var(--muted); font-size: 13px; }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.mode-change { border: 1px solid var(--line); padding: 8px; border-radius: 7px; }
+.mode-change legend { color: var(--muted); font-size: 12px; padding: 0 4px; }
+.initial-rank { min-width: 132px; }
+.member-rank-help { margin-top: 12px; font-size: 12px; color: var(--muted); }
 .checkbox { flex-direction: row; align-items: center; }
 .checkbox input { accent-color: #397356; }
 .inline-error { color: #933d2d; white-space: pre-wrap; overflow-wrap: anywhere; }

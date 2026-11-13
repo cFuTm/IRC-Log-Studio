@@ -1,6 +1,6 @@
 # 日志模板变量
 
-模板是 UTF-8 JSON 文件。预览和 TXT 导出使用相同的格式化规则。模板文件可以从[经典模板](../src/templates/classic.json)或[简洁模板](../src/templates/minimal.json)复制。
+模板是 UTF-8 JSON 文件。预览和 TXT 导出使用相同的格式化规则。可从[带等级前缀的经典模板](../src/templates/classic-ranked.json)、[原版经典模板](../src/templates/classic.json)、[简体中文模板](../src/templates/classic-zh-cn.json)或[简洁模板](../src/templates/minimal.json)复制。
 
 ```json
 {
@@ -31,7 +31,10 @@
 | --- | --- |
 | `{channel}` | 日志所在频道。INVITE 使用目标频道 |
 | `{nick}`、`{actor}`、`{oldNick}` | 操作者的历史昵称。NICK 用此值表示旧昵称 |
-| `{target}` | 目标用户的历史昵称 |
+| `{target}` | 单独选择的目标用户的历史昵称 |
+| `{prefix}` | 事件发生前，操作者在此频道的最高等级前缀。Normal 输出空字符串 |
+| `{displayNick}`、`{actorDisplayNick}` | 等级前缀加操作者的历史昵称 |
+| `{targetDisplayNick}` | 等级前缀加目标的历史昵称。MODE 有单个已解析目标时也可用 |
 | `{hostmask}` | 操作者的历史 Hostmask |
 | `{hostmaskPart}` | 有 Hostmask 时输出 ` (~alice@example.net)` |
 | `{reason}` | 事件说明或原因 |
@@ -40,6 +43,8 @@
 | `{detailPart}` | 有说明时输出 `: 说明` |
 
 组合变量包含所需的前导空格和标点。字段为空时，组合变量输出空字符串。
+
+带等级前缀的经典模板在 MESSAGE、ACTION 和 NOTICE 中使用 `{displayNick}`。如果要隐藏前缀，使用 `{nick}`。系统事件默认使用无前缀的昵称。
 
 ## 事件键和专用变量
 
@@ -53,7 +58,7 @@
 | `nick` | NICK | `{newNick}` 新昵称 |
 | `kick` | KICK | 通用变量 |
 | `topic` | TOPIC | `{topic}` 新主题 |
-| `mode` | MODE | `{mode}` 模式。 `{modeAndTarget}` 包含模式和可选目标昵称 |
+| `mode` | MODE | `{mode}` 模式文本。 `{modeAndTarget}` 也包含单独选择的目标昵称 |
 | `away` | AWAY，离开 | 通用变量 |
 | `awayBack` | AWAY，取消离开 | 通用变量 |
 | `notice` | NOTICE | `{text}` 通知正文 |

@@ -55,7 +55,7 @@ test('optional fields disappear and plain text survives without recursive substi
     [event('QUIT', 1, { reason: ' ' }), '*** Alice has quit'],
     [event('QUIT', 2, { reason: 'Goodbye' }), '*** Alice has quit (Quit: Goodbye)'],
     [event('KICK', 3, { target: snapshot(bob) }), '*** Bob was kicked by Alice'],
-    [event('MODE', 4, { mode: '+m' }), '*** Alice sets mode +m'],
+    [event('MODE', 4, { mode: '+m', rawMode: true }), '*** Alice sets mode +m'],
     [event('AWAY', 5), '*** Alice is away'],
     [event('NETSPLIT', 6, { actor: null, reason: 'servers split' }), '*** Netsplit: servers split'],
     [event('CUSTOM', 7, { text: '<em>{nick} & 中文</em>' }), '<em>{nick} & 中文</em>'],
@@ -67,7 +67,7 @@ test('optional fields disappear and plain text survives without recursive substi
 })
 
 test('NICK updates current defaults and leaves earlier snapshots intact', () => {
-  let project: Project = { ...newProject('Test'), users: [alice], channels: [{ id: 'a', name: '#general', events: [] }] }
+  let project: Project = { ...newProject('Test'), users: [alice], channels: [{ id: 'a', name: '#general', events: [], initialModes: {} }] }
   const hello = event('MESSAGE', 1, { text: 'Hello' })
   const nick = event('NICK', 2, { newNick: 'Alice_' })
   project = saveEvent(project, 'a', hello, false)
@@ -110,8 +110,8 @@ test('editing or deleting membership events recomputes cross-channel state by wr
   const rejoin = event('JOIN', 6)
   const kick = event('KICK', 7, { target: snapshot(alice), actor: snapshot(bob) })
   const channels: Channel[] = [
-    { id: 'a', name: '#general', events: [joinA, part, quit] },
-    { id: 'b', name: '#archive', events: [joinB, nick, rejoin, kick] },
+    { id: 'a', name: '#general', events: [joinA, part, quit], initialModes: {} },
+    { id: 'b', name: '#archive', events: [joinB, nick, rejoin, kick], initialModes: {} },
   ]
   const project = { ...newProject('Membership'), channels, nextOrder: 8 }
   const flags = (value: typeof project) => Array.from(deriveMembers(value.channels).values(), (members) => members.has(alice.id))
@@ -169,7 +169,7 @@ test('invalid templates retain last valid copies and identify offending files', 
     { id: 'bad-file.json', text: null, error: 'Invalid UTF-8' },
   ], new Map([['classic.json', existing]]))
   assert.equal(templates.get('classic.json'), existing)
-  assert.equal(templates.size, 1)
+  assert.equal(templates.size, 3)
   assert.deepEqual(errors.map((error) => error.split('：')[0]), ['classic.json', 'bad-schema.json', 'bad-file.json'])
 })
 
@@ -179,7 +179,7 @@ test('project validation and workspace recovery preserve structure and Unicode',
   const encoded = JSON.stringify(workspace)
   assert.deepEqual(parseWorkspace(encoded), workspace)
   assert.deepEqual(parseProject('\uFEFF' + JSON.stringify(project)), project)
-  assert.throws(() => parseProject(JSON.stringify({ ...project, schemaVersion: 2 })), /schemaVersion 2/)
+  assert.throws(() => parseProject(JSON.stringify({ ...project, schemaVersion: 3 })), /schemaVersion 3/)
   assert.throws(() => parseProject(JSON.stringify({ ...project, nextOrder: 1 })), /nextOrder/)
   const calls: boolean[] = []
   const result = await recoverWorkspace(async (backup) => {

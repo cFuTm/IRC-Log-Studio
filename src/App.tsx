@@ -10,13 +10,14 @@ import { LogView } from './components/LogView.tsx'
 import { UserLibrary } from './components/UserLibrary.tsx'
 import { openProject, openTemplateDirectory, readTemplates, saveProject, type Workspace } from './desktop.ts'
 import {
-  deriveMembers, draftFromEvent, eventFromDraft, newDraft, newProject, removeEvent, saveEvent, snapshot,
+  defaultTemplateId, deriveMembers, draftFromEvent, eventFromDraft, newDraft, newProject, removeEvent, saveEvent, snapshot,
   type Draft, type LogEvent, type Project, type User,
 } from './model.ts'
-import { defaultTemplate, defaultTemplateId, loadTemplates, type Template } from './render.ts'
+import { currentNickResolver, replayRanks, type RankMode } from './ranks.ts'
+import { defaultTemplate, loadTemplates, type Template } from './render.ts'
 import { useWorkspace } from './useWorkspace.ts'
 
-type Modal = 'new-project' | 'new-channel' | 'rename-channel' | 'delete-channel' | 'delete-event' | 'export' | 'users'
+type Modal = 'new-project' | 'new-channel' | 'rename-channel' | 'delete-channel' | 'delete-event' | 'export' | 'users' | 'members'
 type Edit = { id: string; draft: Draft }
 const noMembers = new Set<string>()
 const closed = () => undefined
@@ -24,7 +25,7 @@ const closed = () => undefined
 export function App() {
   const [notice, setNotice] = useState<{ message: string; error: boolean } | null>(null)
   const [modal, setModal] = useState<Modal | null>(null)
-  const [userSlot, setUserSlot] = useState<'actor' | 'target' | null>(null)
+  const [userSlot, setUserSlot] = useState<'actor' | 'target' | number | null>(null)
   const [adding, setAdding] = useState<Draft>(newDraft)
   const [editing, setEditing] = useState<Edit | null>(null)
   const [scrollKey, setScrollKey] = useState(0)
@@ -41,6 +42,11 @@ export function App() {
   const channel = project.channels.find(({ id }) => id === channelId)
   const members = useMemo(() => deriveMembers(project.channels), [project.channels])
   const channelMembers = (channel && members.get(channel.id)) || noMembers
+  const channelRanks = useMemo(() => channel ? replayRanks(channel) : null, [channel])
+  const editedEvent = editing ? channel?.events.find(({ id }) => id === editing.id) : undefined
+  const editorRanks = useMemo(() => channel && editedEvent ? replayRanks(channel, editedEvent.id).current
+    : channelRanks?.current, [channel, channelRanks, editedEvent])
+  const resolveNick = useMemo(() => currentNickResolver(project.users), [project.users])
   const activeTemplateId = templates.has(project.templateId) ? project.templateId : defaultTemplateId
   const template = templates.get(activeTemplateId) ?? defaultTemplate
   const draft = editing?.draft ?? adding
@@ -141,7 +147,7 @@ export function App() {
     const previous = editing && channel.events.find(({ id }) => id === editing.id)
     if (editing && !previous) return
     try {
-      const event = eventFromDraft(draft, project.nextOrder, previous || undefined)
+      const event = eventFromDraft(draft, project.nextOrder, previous || undefined, resolveNick)
       const next = saveEvent(project, channel.id, event, !!previous)
       updateProject(next)
       if (!previous) {
@@ -177,7 +183,7 @@ export function App() {
       })
     } else if (modal === 'new-channel') {
       const id = crypto.randomUUID()
-      updateProject({ ...project, channels: [...project.channels, { id, name, events: [] }] }, id)
+      updateProject({ ...project, channels: [...project.channels, { id, name, events: [], initialModes: {} }] }, id)
       setAdding(newDraft(name))
       setEditing(null)
       setModal(null)
@@ -186,6 +192,26 @@ export function App() {
       setAdding((draft) => draft.destination === channel.name ? { ...draft, destination: name } : draft)
       setModal(null)
     }
+  }
+
+  function setInitialMode(userId: string, mode: RankMode | '') {
+    if (!channel) return
+    const initialModes = { ...channel.initialModes, [userId]: mode ? [mode] : [] }
+    if (!mode) delete initialModes[userId]
+    updateProject({
+      ...project,
+      channels: project.channels.map((entry) => entry.id === channel.id ? { ...entry, initialModes } : entry),
+    })
+  }
+
+  function pickLibraryUser(user: User) {
+    if (typeof userSlot === 'number') {
+      changeDraft({
+        modeChanges: draft.modeChanges.map((entry, index) => index === userSlot
+          ? { ...entry, targetUserId: user.id, targetNick: user.nickname } : entry),
+      })
+    } else if (userSlot) changeDraft({ [userSlot]: snapshot(user) })
+    closeModal()
   }
 
   function confirmDelete() {
@@ -256,6 +282,7 @@ export function App() {
           {project.channels.length === 0 && <p className="sidebar-empty">暂无频道</p>}
         </nav>
         {channel && <div className="channel-tools">
+          <button onClick={() => setModal('members')}><Users size={15} />频道成员</button>
           <button onClick={() => setModal('rename-channel')}><Pencil size={15} />重命名</button>
           <button className="danger-text" onClick={() => setModal('delete-channel')}><Trash2 size={15} />删除频道</button>
         </div>}
@@ -275,9 +302,10 @@ export function App() {
         </div>
       </aside>
       <LogView channel={channel} template={template} selectedId={editing?.id ?? null}
-        scrollKey={scrollKey} select={selectEvent} newChannel={addChannel} />
+        scrollKey={scrollKey} select={selectEvent} newChannel={addChannel} prefixes={channelRanks?.beforeEvent} />
       <EventEditor channel={channel} channels={project.channels} users={project.users} members={channelMembers}
         editing={!!editing} draft={draft} template={template} change={changeDraft} submit={submitEvent}
+        currentRanks={channelRanks?.current} previewRanks={editorRanks} existing={editedEvent} resolveNick={resolveNick}
         cancel={() => setEditing(null)} remove={() => setModal('delete-event')}
         pickUser={(slot) => { setUserSlot(slot); setModal('users') }} />
     </div>
@@ -305,8 +333,10 @@ export function App() {
         <div className="dialog-actions"><button autoFocus onClick={closeModal}>取消</button><button className="destructive" onClick={confirmDelete}>确认删除</button></div>
       </div>
     </Dialog>}
-    {modal === 'users' && <UserLibrary users={project.users} memberIds={channelMembers} onSave={saveUser} onClose={closeModal}
-      select={userSlot ? (user) => { changeDraft({ [userSlot]: snapshot(user) }); closeModal() } : undefined} />}
+    {(modal === 'users' || modal === 'members') && <UserLibrary users={project.users} memberIds={channelMembers}
+      prefixes={channelRanks?.current} onSave={saveUser} onClose={closeModal}
+      channel={modal === 'members' ? channel : undefined} setInitialMode={setInitialMode}
+      select={modal === 'users' && userSlot !== null ? pickLibraryUser : undefined} />}
     {modal === 'export' && <ExportDialog project={project} channelId={channelId} activeTemplate={activeTemplateId}
       templates={templates} onClose={closeModal} onExported={(file) => { closeModal(); reportSuccess(`已导出至 ${file}`) }} />}
   </div>

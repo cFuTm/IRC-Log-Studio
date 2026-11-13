@@ -1,0 +1,24 @@
+{
+  "name": "经典 IRC（简体中文）",
+  "timestampFormat": "HH:mm:ss",
+  "timestampWrapper": "[{time}] ",
+  "events": {
+    "message": "<{nick}> {text}",
+    "action": "* {nick} {text}",
+    "join": "--> {nick}{hostmaskPart} 加入了 {channel}",
+    "part": "<-- {nick} 离开了 {channel}{reasonPart}",
+    "quit": "*** {nick} 退出了 IRC{reasonPart}",
+    "nick": "*** {oldNick} 将昵称改为 {newNick}",
+    "kick": "*** {actor} 将 {target} 踢出了频道{reasonPart}",
+    "topic": "*** {actor} 将频道主题改为：{topic}",
+    "mode": "*** {actor} 设置了模式 {modeAndTarget}",
+    "away": "*** {nick} 暂时离开{detailPart}",
+    "awayBack": "*** {nick} 回来了",
+    "notice": "-{nick}- {text}",
+    "invite": "*** {actor} 邀请 {target} 加入 {channel}",
+    "netsplit": "*** 网络分裂：{netsplitText}",
+    "connection": "*** 连接状态：{text}",
+    "error": "*** 连接错误：{text}",
+    "custom": "{sourcePart}{text}"
+  }
+}

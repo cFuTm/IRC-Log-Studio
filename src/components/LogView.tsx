@@ -1,15 +1,17 @@
 import { memo, useLayoutEffect, useRef } from 'react'
 import { ArrowDownToLine, Hash, Plus, SquareTerminal } from 'lucide-react'
 import type { Channel, LogEvent } from '../model.ts'
+import type { EventPrefixes } from '../ranks.ts'
 import { formatEvent, type Template } from '../render.ts'
 
-export const LogView = memo(function LogView({ channel, template, selectedId, scrollKey, select, newChannel }: {
+export const LogView = memo(function LogView({ channel, template, selectedId, scrollKey, select, newChannel, prefixes }: {
   channel: Channel | undefined
   template: Template
   selectedId: string | null
   scrollKey: number
   select: (event: LogEvent) => void
   newChannel: () => void
+  prefixes?: ReadonlyMap<string, EventPrefixes>
 }) {
   const viewport = useRef<HTMLDivElement>(null)
   const goToBottom = () => {
@@ -38,7 +40,8 @@ export const LogView = memo(function LogView({ channel, template, selectedId, sc
       </div>
       <div className="terminal-scroll" ref={viewport}>
         {channel && channel.events.length ? channel.events.map((event) =>
-          <LogRow key={event.id} event={event} channel={channel.name} template={template} select={select} selected={selectedId === event.id} />,
+          <LogRow key={event.id} event={event} channel={channel.name} template={template} select={select}
+            selected={selectedId === event.id} actorPrefix={prefixes?.get(event.id)?.actor} targetPrefix={prefixes?.get(event.id)?.target} />,
         ) : <div className="terminal-empty">
           <span className="terminal-empty-icon"><SquareTerminal size={30} strokeWidth={1.5} /></span>
           <strong>{channel ? '这个频道还没有事件' : '还没有频道'}</strong>
@@ -50,10 +53,11 @@ export const LogView = memo(function LogView({ channel, template, selectedId, sc
   </main>
 })
 
-const LogRow = memo(function LogRow({ event, channel, template, selected, select }: {
+const LogRow = memo(function LogRow({ event, channel, template, selected, select, actorPrefix, targetPrefix }: {
   event: LogEvent; channel: string; template: Template; selected: boolean; select: (event: LogEvent) => void
+  actorPrefix?: string; targetPrefix?: string
 }) {
-  const segments = formatEvent(event, channel, template)
+  const segments = formatEvent(event, channel, template, true, { actor: actorPrefix, target: targetPrefix })
   return <div role="button" tabIndex={0} aria-pressed={selected}
     className={`log-row log-${event.type.toLowerCase()}${selected ? ' is-selected' : ''}`}
     onClick={() => { if (window.getSelection()?.isCollapsed !== false) select(event) }}
