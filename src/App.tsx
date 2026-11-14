@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   AlertCircle, Check, ChevronDown, Download, FilePlus2, FolderOpen, HardDrive,
-  Hash, Pencil, Plus, RefreshCw, Save, SquareTerminal, Trash2, Users, X,
+  Hash, Pencil, Plus, Redo2, RefreshCw, Save, SquareTerminal, Trash2, Undo2, Users, X,
 } from 'lucide-react'
 import { Dialog } from './components/Dialog.tsx'
 import { EventEditor } from './components/EventEditor.tsx'
 import { ExportDialog } from './components/ExportDialog.tsx'
 import { LogView } from './components/LogView.tsx'
 import { UserLibrary } from './components/UserLibrary.tsx'
-import { openProject, openTemplateDirectory, readTemplates, saveProject, type Workspace } from './desktop.ts'
+import { openProject, openTemplateDirectory, projectDisplayName, readTemplates, saveProject, type Workspace } from './desktop.ts'
+import { applyEventEdit, moveEvent, type EventEdit } from './eventHistory.ts'
 import {
   defaultTemplateId, deriveMembers, draftFromEvent, eventFromDraft, newDraft, newProject, removeEvent, saveEvent, snapshot,
   type Draft, type LogEvent, type Project, type User,
@@ -21,6 +22,8 @@ type Modal = 'new-project' | 'new-channel' | 'rename-channel' | 'delete-channel'
 type Edit = { id: string; draft: Draft }
 const noMembers = new Set<string>()
 const closed = () => undefined
+const editingText = (target: EventTarget | null) => target instanceof Element
+  && !!target.closest('input,textarea,select,[contenteditable]')
 
 export function App() {
   const [notice, setNotice] = useState<{ message: string; error: boolean } | null>(null)
@@ -28,6 +31,7 @@ export function App() {
   const [userSlot, setUserSlot] = useState<'actor' | 'target' | number | null>(null)
   const [adding, setAdding] = useState<Draft>(newDraft)
   const [editing, setEditing] = useState<Edit | null>(null)
+  const [history, setHistory] = useState<{ undo: EventEdit[]; redo: EventEdit[] }>({ undo: [], redo: [] })
   const [scrollKey, setScrollKey] = useState(0)
   const [templates, setTemplates] = useState(() => new Map([[defaultTemplateId, defaultTemplate]]))
   const templateCache = useRef<Map<string, Template>>(templates)
@@ -35,7 +39,7 @@ export function App() {
   const [loadingTemplates, setLoadingTemplates] = useState(false)
   const operation = useRef<Promise<void> | null>(null)
   const menu = useRef<HTMLDetailsElement>(null)
-  const reportError = (message: string) => setNotice({ message, error: true })
+  const reportError = useCallback((message: string) => setNotice({ message, error: true }), [])
   const reportSuccess = (message: string) => setNotice({ message, error: false })
   const { workspace, current, ready, status, update, flush } = useWorkspace(reportError, () => operation.current)
   const { project, path, channelId, fileDirty } = workspace
@@ -80,9 +84,9 @@ export function App() {
     })
   }
 
-  function updateProject(next: Project, selectedChannel = current.current.channelId) {
+  const updateProject = useCallback((next: Project, selectedChannel = current.current.channelId) => {
     update({ ...current.current, project: next, channelId: selectedChannel, fileDirty: true })
-  }
+  }, [current, update])
 
   function switchChannel(id: string) {
     if (channelId === id) return
@@ -103,6 +107,7 @@ export function App() {
     await flush()
     update(next)
     setEditing(null)
+    setHistory({ undo: [], redo: [] })
     setAdding(newDraft(next.project.channels.find(({ id }) => id === next.channelId)?.name))
     setModal(null)
     await flush()
@@ -114,7 +119,7 @@ export function App() {
       const next = await openProject()
       if (next) {
         await replaceWorkspace(next)
-        reportSuccess(`已打开 ${next.project.name}`)
+        reportSuccess(`已打开 ${projectDisplayName(next)}`)
       }
     })
   }
@@ -142,6 +147,45 @@ export function App() {
   }, [current])
   const addChannel = useCallback(() => setModal('new-channel'), [])
 
+  const recordEventEdit = useCallback((next: Project, nicknameUserId?: string | null) => {
+    if (!channel) return
+    const after = next.channels.find(({ id }) => id === channel.id)?.events
+    if (!after || after === channel.events) return
+    const previousNick = project.users.find(({ id }) => id === nicknameUserId)
+    const nextNick = next.users.find(({ id }) => id === nicknameUserId)
+    const nickname = previousNick && nextNick && previousNick.nickname !== nextNick.nickname
+      ? { userId: previousNick.id, before: previousNick.nickname, after: nextNick.nickname } : undefined
+    setHistory(({ undo }) => ({ undo: [...undo.slice(-99), { channelId: channel.id, before: channel.events, after, nickname }], redo: [] }))
+    updateProject(next)
+  }, [channel, project.users, updateProject])
+
+  function replayEventEdit(action: 'undo' | 'redo') {
+    const edit = history[action].at(-1)
+    if (!edit) return
+    const other = action === 'undo' ? 'redo' : 'undo'
+    const next = applyEventEdit(project, edit, action === 'undo' ? 'before' : 'after')
+    const target = next.channels.find(({ id }) => id === edit.channelId)
+    setHistory({ ...history, [action]: history[action].slice(0, -1), [other]: [...history[other], edit] })
+    setEditing(null)
+    if (edit.channelId !== channelId) setAdding(newDraft(target?.name))
+    else if (edit.nickname) {
+      const user = next.users.find(({ id }) => id === edit.nickname?.userId)
+      if (user) setAdding((draft) => ({
+        ...draft,
+        actor: draft.actor?.userId === user.id ? snapshot(user) : draft.actor,
+        target: draft.target?.userId === user.id ? snapshot(user) : draft.target,
+      }))
+    }
+    updateProject(next, edit.channelId)
+  }
+
+  const reorderEvent = useCallback((eventId: string, targetId: string, after: boolean) => {
+    if (!channel) return
+    const events = moveEvent(channel.events, eventId, targetId, after)
+    if (events === channel.events) return
+    recordEventEdit({ ...project, channels: project.channels.map((item) => item === channel ? { ...item, events } : item) })
+  }, [channel, project, recordEventEdit])
+
   function submitEvent() {
     if (!channel) return
     const previous = editing && channel.events.find(({ id }) => id === editing.id)
@@ -149,7 +193,9 @@ export function App() {
     try {
       const event = eventFromDraft(draft, project.nextOrder, previous || undefined, resolveNick)
       const next = saveEvent(project, channel.id, event, !!previous)
-      updateProject(next)
+      if (!previous || JSON.stringify(event) !== JSON.stringify(previous)) {
+        recordEventEdit(next, !previous && event.type === 'NICK' ? event.actor.userId : undefined)
+      }
       if (!previous) {
         const user = next.users.find(({ id }) => id === adding.actor?.userId)
         const nextDraft = newDraft(channel.name, user ? snapshot(user) : adding.actor, adding.type)
@@ -219,9 +265,13 @@ export function App() {
     if (modal === 'delete-channel') {
       const channels = project.channels.filter(({ id }) => id !== channel.id)
       updateProject({ ...project, channels }, channels[0]?.id ?? null)
+      setHistory(({ undo, redo }) => ({
+        undo: undo.filter((edit) => edit.channelId !== channel.id),
+        redo: redo.filter((edit) => edit.channelId !== channel.id),
+      }))
       setAdding(newDraft(channels[0]?.name))
     } else if (editing) {
-      updateProject(removeEvent(project, channel.id, editing.id))
+      recordEventEdit(removeEvent(project, channel.id, editing.id))
     }
     setEditing(null)
     setModal(null)
@@ -235,10 +285,17 @@ export function App() {
           case 's': event.preventDefault(); saveCurrent(event.shiftKey); break
           case 'o': event.preventDefault(); openExisting(); break
           case 'n': event.preventDefault(); setModal('new-project'); break
+          case 'z':
+          case 'y':
+            if (!editingText(event.target)) {
+              event.preventDefault()
+              replayEventEdit(event.shiftKey || event.key.toLowerCase() === 'y' ? 'redo' : 'undo')
+            }
+            break
         }
       } else if (editing && event.key === 'Escape') {
         setEditing(null)
-      } else if (editing && event.key === 'Delete' && !(event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]'))) {
+      } else if (editing && event.key === 'Delete' && !editingText(event.target)) {
         event.preventDefault()
         setModal('delete-event')
       }
@@ -252,12 +309,15 @@ export function App() {
   const deletingChannel = modal === 'delete-channel'
   const statusText = { idle: '本地工作区', pending: '等待自动存档', saved: '已自动存档', error: '自动存档失败' }[status]
 
-  return <div className="app-shell">
+  const preventFileDrop = (event: React.DragEvent) => {
+    if (event.dataTransfer.types.includes('Files')) event.preventDefault()
+  }
+  return <div className="app-shell" onDragOver={preventFileDrop} onDrop={preventFileDrop}>
     <header className="toolbar">
       <div className="brand"><span className="brand-icon"><SquareTerminal size={23} strokeWidth={1.7} /></span><span>IRC Log Studio</span></div>
       <div className="toolbar-divider" />
       <details className="project-menu" ref={menu}>
-        <summary title={path ?? project.name}><span>{ready ? project.name : '正在恢复项目…'}</span><ChevronDown size={14} /></summary>
+        <summary title={path ?? project.name}><span>{ready ? projectDisplayName(workspace) : '正在恢复项目…'}</span><ChevronDown size={14} /></summary>
         <div className="menu-panel">
           <button disabled={!ready || busy} onClick={() => { if (menu.current) menu.current.open = false; setModal('new-project') }}><FilePlus2 size={16} />新建项目<span>Ctrl+N</span></button>
           <button disabled={!ready || busy} onClick={openExisting}><FolderOpen size={16} />打开项目<span>Ctrl+O</span></button>
@@ -265,6 +325,10 @@ export function App() {
         </div>
       </details>
       <div className="toolbar-actions">
+        <button className="icon-button" disabled={!ready || busy || !history.undo.length} onClick={() => replayEventEdit('undo')}
+          title="撤销事件操作 (Ctrl+Z)" aria-label="撤销事件操作"><Undo2 size={17} /></button>
+        <button className="icon-button" disabled={!ready || busy || !history.redo.length} onClick={() => replayEventEdit('redo')}
+          title="重做事件操作 (Ctrl+Y)" aria-label="重做事件操作"><Redo2 size={17} /></button>
         <button disabled={!ready || busy} onClick={() => { setUserSlot(null); setModal('users') }}><Users size={17} />用户档案</button>
         <button disabled={!ready || busy} onClick={() => saveCurrent()} title="保存项目 (Ctrl+S)"><Save size={16} />保存</button>
         <button className="primary" disabled={!ready || busy} onClick={() => setModal('export')}><Download size={16} />导出</button>
@@ -287,6 +351,8 @@ export function App() {
           <button className="danger-text" onClick={() => setModal('delete-channel')}><Trash2 size={15} />删除频道</button>
         </div>}
         <div className="template-panel">
+          <label className="checkbox rank-prefix-setting"><input type="checkbox" checked={project.showRankPrefixes}
+            onChange={(event) => updateProject({ ...project, showRankPrefixes: event.target.checked })} />显示日志等级前缀</label>
           <label>日志模板
             <select value={activeTemplateId} title={project.templateId === activeTemplateId ? undefined : `${project.templateId} 不可用`}
               onChange={(event) => updateProject({ ...project, templateId: event.target.value })}>
@@ -302,10 +368,12 @@ export function App() {
         </div>
       </aside>
       <LogView channel={channel} template={template} selectedId={editing?.id ?? null}
-        scrollKey={scrollKey} select={selectEvent} newChannel={addChannel} prefixes={channelRanks?.beforeEvent} />
+        scrollKey={scrollKey} select={selectEvent} newChannel={addChannel} prefixes={channelRanks?.beforeEvent}
+        reorder={reorderEvent} showRankPrefixes={project.showRankPrefixes} />
       <EventEditor channel={channel} channels={project.channels} users={project.users} members={channelMembers}
         editing={!!editing} draft={draft} template={template} change={changeDraft} submit={submitEvent}
         currentRanks={channelRanks?.current} previewRanks={editorRanks} existing={editedEvent} resolveNick={resolveNick}
+        showRankPrefixes={project.showRankPrefixes}
         cancel={() => setEditing(null)} remove={() => setModal('delete-event')}
         pickUser={(slot) => { setUserSlot(slot); setModal('users') }} />
     </div>

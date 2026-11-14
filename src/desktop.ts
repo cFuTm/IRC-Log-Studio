@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
-import { newProject, parseProject, type Project } from './model.ts'
+import { newProject, parseProject, projectSchemaVersion, type Project } from './model.ts'
 import { safeFilename, type TemplateFile } from './render.ts'
 
 export type Workspace = { project: Project; path: string | null; channelId: string | null; fileDirty: boolean }
@@ -10,30 +10,39 @@ export const freshWorkspace = (): Workspace => ({
   project: newProject('未命名项目'), path: null, channelId: null, fileDirty: false,
 })
 
-export function parseWorkspace(text: string): Workspace {
+function restoreWorkspace(text: string) {
   const stored = JSON.parse(text)
   const project = parseProject(JSON.stringify(stored.project))
-  return {
+  const workspace: Workspace = {
     project,
     path: typeof stored.path === 'string' ? stored.path : null,
     fileDirty: stored.fileDirty === true,
     channelId: project.channels.some(({ id }) => id === stored.channelId)
       ? stored.channelId : project.channels[0]?.id ?? null,
   }
+  return { workspace, needsUpgrade: stored.project.schemaVersion !== projectSchemaVersion }
+}
+
+export function parseWorkspace(text: string): Workspace {
+  return restoreWorkspace(text).workspace
+}
+
+export function projectDisplayName({ path, project }: Workspace): string {
+  return path?.split(/[\\/]/).at(-1)?.replace(/\.(irclogproj|json)$/i, '') || project.name
 }
 
 export async function recoverWorkspace(read = (backup: boolean) => invoke<string | null>('read_workspace', { backup })) {
   let primaryError = ''
   try {
     const text = await read(false)
-    if (text !== null) return { workspace: parseWorkspace(text), warning: '', keepBackup: false }
+    if (text !== null) return { ...restoreWorkspace(text), warning: '', keepBackup: false }
   } catch (error) {
     primaryError = String(error)
   }
   try {
     const text = await read(true)
     if (text !== null) {
-      return { workspace: parseWorkspace(text), warning: '已从上一次自动存档的备份恢复。', keepBackup: true }
+      return { ...restoreWorkspace(text), warning: '已从上一次自动存档的备份恢复。', keepBackup: true }
     }
   } catch (error) {
     primaryError = [primaryError, String(error)].filter(Boolean).join('\n')
@@ -42,6 +51,7 @@ export async function recoverWorkspace(read = (backup: boolean) => invoke<string
     workspace: freshWorkspace(),
     warning: primaryError ? `无法恢复自动存档。\n${primaryError}` : '',
     keepBackup: false,
+    needsUpgrade: false,
   }
 }
 

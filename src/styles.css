@@ -123,6 +123,19 @@ h1, h2, p { margin: 0; }
   cursor: pointer; user-select: text; white-space: pre-wrap; overflow-wrap: anywhere;
   content-visibility: auto; contain-intrinsic-size: auto 32px;
 }
+.log-entry { position: relative; display: grid; grid-template-columns: 19px minmax(0, 1fr); }
+.log-entry .log-row { grid-column: 2; grid-row: 1; }
+.log-drag-handle {
+  display: grid; place-items: center; grid-column: 1; grid-row: 1; align-self: start;
+  height: 31px; color: #839b8b; cursor: grab; user-select: none;
+}
+.log-drag-handle:hover { color: #d7e9da; }
+.log-drag-handle:active { cursor: grabbing; }
+.log-entry.drop-before::after, .log-entry.drop-after::after {
+  position: absolute; left: 19px; right: 1px; height: 2px; background: #a2d1af; content: ''; pointer-events: none; z-index: 1;
+}
+.log-entry.drop-before::after { top: 0; }
+.log-entry.drop-after::after { bottom: 0; }
 .log-row:hover { background: #22372b; }
 .log-row.is-selected { border-color: #6a987d; background: #304c3c; }
 .log-row:focus-visible { outline: 2px solid #a2d1af; outline-offset: -2px; }
@@ -140,8 +153,14 @@ h1, h2, p { margin: 0; }
 .editor-close { margin-left: auto; }
 .editor-empty { padding: 22px 17px; color: var(--muted); font-size: 13px; }
 .editor-form { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-.editor-fields { flex: 1; min-height: 0; overflow-y: auto; padding: 19px 17px; }
+.editor-adding { --editor-detail-bg: #f1f6ee; }
+.editor-editing { --editor-detail-bg: #fdf0e3; }
+.editor-fields { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow-y: auto; }
+.editor-meta, .editor-details { padding: 19px 17px; }
+.editor-details { flex: 1; border-top: 1px solid var(--line); }
+.editor-details, .editor-actions { background: var(--editor-detail-bg); }
 .editor-actions { padding: 13px 17px 16px; border-top: 1px solid var(--line); }
+.rank-prefix-setting { margin-bottom: 10px; }
 .editor-actions > button { min-height: 42px; }
 .edit-secondary { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
 .full-width { width: 100%; }

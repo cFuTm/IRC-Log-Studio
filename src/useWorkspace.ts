@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { freshWorkspace, recoverWorkspace, writeWorkspace, type Workspace } from './desktop.ts'
 
@@ -14,7 +14,7 @@ export function useWorkspace(reportError: (message: string) => void, pendingActi
   const queue = useRef<Promise<unknown>>(Promise.resolve())
   const closing = useRef(false)
 
-  function flush(): Promise<void> {
+  const flush = useCallback((): Promise<void> => {
     clearTimeout(timer.current)
     const save = async () => {
       if (revision.current === written.current) return
@@ -33,24 +33,27 @@ export function useWorkspace(reportError: (message: string) => void, pendingActi
     const task = queue.current.then(save)
     queue.current = task.catch(() => undefined)
     return task
-  }
+  }, [reportError])
 
-  function update(next: Workspace) {
+  const update = useCallback((next: Workspace) => {
     current.current = next
     setWorkspace(next)
     revision.current += 1
     setStatus('pending')
     clearTimeout(timer.current)
     timer.current = setTimeout(() => { void flush().catch(() => undefined) }, 650)
-  }
+  }, [flush])
 
   useEffect(() => {
     let active = true
     void recoverWorkspace().then((result) => {
       if (!active) return
-      current.current = result.workspace
-      setWorkspace(result.workspace)
       keepBackup.current = result.keepBackup
+      if (result.needsUpgrade) update(result.workspace)
+      else {
+        current.current = result.workspace
+        setWorkspace(result.workspace)
+      }
       if (result.warning) reportError(result.warning)
       setReady(true)
     })

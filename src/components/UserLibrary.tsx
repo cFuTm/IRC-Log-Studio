@@ -19,7 +19,7 @@ export function UserLibrary({ users, memberIds, prefixes = noPrefixes, channel, 
   const [query, setQuery] = useState('')
   const [draft, setDraft] = useState<User | null>(null)
   const matching = sortUsersByRank(users.filter((user) => [user.nickname, user.username, user.hostname]
-    .some((value) => value.toLowerCase().includes(query.trim().toLowerCase()))), prefixes)
+    .some((value) => value.toLowerCase().includes(query.trim().toLowerCase()))), prefixes, memberIds)
   const newUser = () => setDraft({ id: '', nickname: query.trim(), username: '', hostname: '', notes: '' })
 
   function save(event: FormEvent) {

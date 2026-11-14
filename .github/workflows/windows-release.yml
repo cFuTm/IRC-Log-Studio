@@ -64,7 +64,7 @@ jobs:
           - 下载 `-setup.exe` 安装程序。安装包包含 WebView2 离线安装组件。
           - 下载不带 `-setup` 的 EXE 直接运行。系统需已安装 WebView2 Runtime。
 
-          本版新增频道初始等级、组合 MODE 和按事件顺序回放的历史昵称前缀。
-          新项目默认显示等级前缀。旧项目可以切换到「Classic IRC · 等级前缀」。
+          旧自动存档会自动升级，等级前缀默认可用。顶部显示保存文件名，频道成员按实际等级和在线状态排序。
+          日志支持拖动排序和撤销重做。新增和编辑事件使用不同的淡色背景。
           '@ | Set-Content -LiteralPath $notes -Encoding utf8
           gh release create $tag $portableAsset $installerAsset --verify-tag --title "IRC Log Studio $tag" --notes-file $notes

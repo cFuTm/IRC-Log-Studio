@@ -44,13 +44,15 @@ const user = z.object({
 const channel = z.object({
   id, name: label, events: z.array(eventSchema), initialModes: z.record(id, z.array(rankMode)),
 })
+export const projectSchemaVersion = 3
 const projectSchema = z.object({
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(projectSchemaVersion),
   id,
   name: label,
   users: z.array(user),
   channels: z.array(channel),
   templateId: label,
+  showRankPrefixes: z.boolean(),
   nextOrder: z.number().int().positive(),
 }).superRefine((project, ctx) => {
   const events = project.channels.flatMap(({ events }) => events)
@@ -70,7 +72,7 @@ const legacyProject = z.object({
   ...projectSchema.shape,
   schemaVersion: z.literal(1),
   channels: z.array(channel.extend({ events: z.array(legacyEvent) }).omit({ initialModes: true })),
-})
+}).omit({ showRankPrefixes: true })
 
 export type Project = z.infer<typeof projectSchema>
 export type Channel = z.infer<typeof channel>
@@ -89,7 +91,10 @@ export const eventLabels: Record<EventType, string> = {
 }
 
 export function newProject(name: string): Project {
-  return { schemaVersion: 2, id: crypto.randomUUID(), name, users: [], channels: [], templateId: defaultTemplateId, nextOrder: 1 }
+  return {
+    schemaVersion: projectSchemaVersion, id: crypto.randomUUID(), name, users: [], channels: [],
+    templateId: defaultTemplateId, showRankPrefixes: true, nextOrder: 1,
+  }
 }
 
 export function parseProject(text: string): Project {
@@ -111,9 +116,12 @@ export function parseProject(text: string): Project {
           }
         }),
       }
-    } else if (raw.schemaVersion !== 2) {
+    } else if (raw.schemaVersion !== 2 && raw.schemaVersion !== projectSchemaVersion) {
       throw new Error(`此版本无法打开 schemaVersion ${String(raw.schemaVersion)} 的项目。`)
     }
+  }
+  if (raw && typeof raw === 'object' && 'schemaVersion' in raw && raw.schemaVersion === 2) {
+    raw = { ...raw, schemaVersion: projectSchemaVersion, showRankPrefixes: true }
   }
   const result = projectSchema.safeParse(raw)
   if (!result.success) throw projectError(result.error)

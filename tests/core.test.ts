@@ -179,7 +179,7 @@ test('project validation and workspace recovery preserve structure and Unicode',
   const encoded = JSON.stringify(workspace)
   assert.deepEqual(parseWorkspace(encoded), workspace)
   assert.deepEqual(parseProject('\uFEFF' + JSON.stringify(project)), project)
-  assert.throws(() => parseProject(JSON.stringify({ ...project, schemaVersion: 3 })), /schemaVersion 3/)
+  assert.throws(() => parseProject(JSON.stringify({ ...project, schemaVersion: 4 })), /schemaVersion 4/)
   assert.throws(() => parseProject(JSON.stringify({ ...project, nextOrder: 1 })), /nextOrder/)
   const calls: boolean[] = []
   const result = await recoverWorkspace(async (backup) => {

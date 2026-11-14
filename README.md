@@ -2,7 +2,7 @@
 
 IRC Log Studio 是 Windows 本地桌面编辑器。你可以用中文界面编写 IRC 风格的日志，在频道之间切换，管理用户档案，再将日志导出为文本或结构化项目。应用离线运行。
 
-从 [GitHub Releases](https://github.com/cFuTm/IRC-Simulator/releases/latest) 下载 Windows x64 版。带 `-setup.exe` 的文件包含 WebView2 离线安装组件。便携版 EXE 可以直接运行，系统需已安装 WebView2 Runtime。
+从 [GitHub Releases](https://github.com/cFuTm/IRC-Log-Studio/releases/latest) 下载 Windows x64 版。带 `-setup.exe` 的文件包含 WebView2 离线安装组件。便携版 EXE 可以直接运行，系统需已安装 WebView2 Runtime。
 
 ## 安装依赖
 
@@ -37,7 +37,9 @@ pnpm tauri build
 
 用户选择菜单优先显示当前频道成员。其他档案也可以直接选择。点击选择框旁的档案库按钮，可以搜索昵称、Username 或 Hostname，也可以新建并选中档案。已有事件保留创建时的昵称和 Hostmask。新增 NICK 事件会更新档案当前昵称。
 
-点击「频道成员」设置频道初始等级。成员昵称显示日志末尾的最高等级前缀，初始等级可以单独编辑。添加 MODE 事件时，可以逐条选择赋予或移除等级，也可以切换到原始输入，例如 `+ov Alice Bob`。应用按事件排列顺序重算前缀。
+点击「频道成员」设置频道初始等级。列表先按日志末尾的实际等级排序。同等级下，在频道中的成员排在前面，再按昵称排序。添加 MODE 事件时，可以逐条选择赋予或移除等级，也可以切换到原始输入，例如 `+ov Alice Bob`。应用按事件排列顺序重算前缀。
+
+拖动日志行左侧的把手，可以调整同一频道的事件顺序。顶部按钮支持撤销和重做本次会话中的最近 100 次事件操作。焦点在文本控件外时，也可按 `Ctrl+Z` 撤销，按 `Ctrl+Y` 或 `Ctrl+Shift+Z` 重做。
 
 新增事件默认使用提交时的本地时间。点击时间设置可以固定时间，适用于连续补录。编辑事件时保留原时间，除非手动修改。日志按记录顺序显示。
 
@@ -45,7 +47,7 @@ pnpm tauri build
 
 ## 项目文件和自动存档
 
-「保存」将结构化项目写入选择的 `.irclogproj` 文件。「另存为」将项目写入新路径。应用也可以打开符合相同结构的 `.json` 文件。当前 `schemaVersion` 为 2。打开旧项目时，应用将可识别的 MODE 绑定到用户 ID，保留事件顺序、原始模式和模板选择。
+「保存」将结构化项目写入选择的 `.irclogproj` 文件。「另存为」将项目写入新路径。顶部显示项目文件名。应用也可以打开符合相同结构的 `.json` 文件。当前 `schemaVersion` 为 3。应用打开旧项目时保留事件顺序、原始模式和模板选择，并默认启用日志等级前缀。启动时恢复的旧自动存档会自动写回新格式。
 
 项目或所选频道发生变化后，应用等待 650 毫秒再写入自动存档。正常关闭窗口前，应用会尝试写入等待中的改动。应用启动时会恢复上次工作区，主存档无法读取时会尝试备份。指定路径的项目文件通过「保存」或「另存为」更新。
 
@@ -65,7 +67,7 @@ pnpm tauri build
 4. 点击「重新加载模板」。
 5. 在「日志模板」中选择模板。
 
-新项目默认使用「Classic IRC · 等级前缀」。旧项目可以从「日志模板」切换到这个版本。应用也提供原版经典、简洁和简体中文模板。模板文件格式见[模板变量说明](docs/templates.md)。
+「显示日志等级前缀」设置同时应用于预览和 TXT 导出。经典、简洁和简体中文模板都可以显示等级前缀。模板文件格式见[模板变量说明](docs/templates.md)。
 
 点击「导出」，选择当前频道或所有频道，再选择文件格式。TXT 导出可以选择模板和时间戳。导出所有频道到 TXT 时，应用在同一个文件中加入频道分隔行。JSON 导出保留结构化数据。导出当前频道到 JSON 时，项目包含该频道和项目用户档案。
 
@@ -90,12 +92,11 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 界面测试使用本机 Edge 和临时文件。测试专用 IPC 接口替代原生对话框和 Rust 文件命令。若使用 Chrome，先设置 `$env:IRC_STUDIO_BROWSER = 'chrome'`。
 
-v0.2.0 的类型检查、16 项单元测试、前端构建和 Edge 界面验收通过。Windows 构建和 Rust 存档测试记录见 [GitHub Actions](https://github.com/cFuTm/IRC-Simulator/actions/workflows/windows-release.yml)。
+Windows 构建和 Rust 存档测试记录见 [GitHub Actions](https://github.com/cFuTm/IRC-Log-Studio/actions/workflows/windows-release.yml)。
 
 ## 当前限制
 
 - 自动存档恢复最后使用的工作区。单独保留项目时，请保存到项目文件。
 - 模板格式包含文本变量和时间标记。颜色由应用样式定义。
-- 事件通过追加录入，历史事件可原位编辑或删除。
 - 原始 MODE 中无匹配或存在重名的目标保留原文本。要精确指定目标，请用等级操作选择用户档案。
 - 原生桌面窗口和安装程序的交互流程仍待实机验证。

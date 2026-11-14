@@ -44,7 +44,7 @@
 
 组合变量包含所需的前导空格和标点。字段为空时，组合变量输出空字符串。
 
-带等级前缀的经典模板在 MESSAGE、ACTION 和 NOTICE 中使用 `{displayNick}`。如果要隐藏前缀，使用 `{nick}`。系统事件默认使用无前缀的昵称。
+「显示日志等级前缀」启用时，MESSAGE、ACTION 和 NOTICE 中的 `{nick}` 和 `{actor}` 会自动显示前缀，前提是该事件格式未使用显式等级变量。包含 `{prefix}`、`{displayNick}` 或 `{actorDisplayNick}` 的格式可按需放置前缀。系统事件默认使用无前缀昵称。关闭项目设置后，日志和 TXT 导出均隐藏等级前缀。
 
 ## 事件键和专用变量
 

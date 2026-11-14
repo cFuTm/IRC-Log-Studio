@@ -70,6 +70,7 @@ function segments(format: string, values: Record<string, string>): Segment[] {
 
 export function formatEvent(
   event: LogEvent, channel: string, template: Template, showTimestamp = true, prefixes?: EventPrefixes,
+  showRankPrefixes = true,
 ): Segment[] {
   const { actor, target: targetIdentity } = eventIdentities(event)
   const reason = 'reason' in event ? event.reason.trim() : ''
@@ -77,12 +78,12 @@ export function formatEvent(
   const nick = actor?.nick ?? ''
   const hostmask = actor?.hostmask ?? ''
   const detailPart = reason ? `: ${reason}` : ''
-  const prefix = prefixes?.actor ?? ''
+  const prefix = showRankPrefixes ? prefixes?.actor ?? '' : ''
   const displayNick = prefix + nick
   const values: Record<string, string> = {
     channel, nick, actor: nick, oldNick: nick, hostmask, target, reason, detailPart,
     prefix, displayNick, actorDisplayNick: displayNick,
-    targetDisplayNick: (prefixes?.target ?? '') + (targetIdentity?.nick ?? ''),
+    targetDisplayNick: (showRankPrefixes ? prefixes?.target ?? '' : '') + (targetIdentity?.nick ?? ''),
     hostmaskPart: hostmask ? ` (${hostmask})` : '',
     reasonPart: reason ? ` (${reason})` : '',
     quitReasonPart: reason ? ` (${/^quit:/i.test(reason) ? reason : `Quit: ${reason}`})` : '',
@@ -125,7 +126,13 @@ export function formatEvent(
       break
   }
 
-  const body = segments(template.events[key] ?? classic.events[key as keyof typeof classic.events], values)
+  const format = template.events[key] ?? classic.events[key as keyof typeof classic.events]
+  if (['MESSAGE', 'ACTION', 'NOTICE'].includes(event.type) && !/\{(?:prefix|displayNick|actorDisplayNick)\}/.test(format)) {
+    // Give older templates the same sender prefix as templates with explicit rank variables.
+    values.nick = displayNick
+    values.actor = displayNick
+  }
+  const body = segments(format, values)
   if (!showTimestamp || !template.timestampFormat || !template.timestampWrapper) return body
   const tokens: Record<string, string> = {
     YYYY: event.timestamp.slice(0, 4), MM: event.timestamp.slice(5, 7), DD: event.timestamp.slice(8, 10),
@@ -135,8 +142,10 @@ export function formatEvent(
   return [...segments(template.timestampWrapper, { time }).map(({ text }) => ({ text, tone: 'time' as const })), ...body]
 }
 
-export function renderEvent(event: LogEvent, channel: string, template: Template, showTimestamp = true, prefixes?: EventPrefixes): string {
-  return formatEvent(event, channel, template, showTimestamp, prefixes).map(({ text }) => text).join('')
+export function renderEvent(
+  event: LogEvent, channel: string, template: Template, showTimestamp = true, prefixes?: EventPrefixes, showRankPrefixes = true,
+): string {
+  return formatEvent(event, channel, template, showTimestamp, prefixes, showRankPrefixes).map(({ text }) => text).join('')
 }
 
 export function exportText(project: Project, channelId: string | null, template: Template, showTimestamp: boolean): string {
@@ -144,7 +153,8 @@ export function exportText(project: Project, channelId: string | null, template:
     .filter(({ id }) => channelId === null || channelId === id)
     .map((channel) => {
       const { beforeEvent } = replayRanks(channel)
-      const lines = channel.events.map((event) => renderEvent(event, channel.name, template, showTimestamp, beforeEvent.get(event.id)))
+      const lines = channel.events.map((event) =>
+        renderEvent(event, channel.name, template, showTimestamp, beforeEvent.get(event.id), project.showRankPrefixes))
       return (channelId === null ? [`=== ${channel.name} ===`, ...lines] : lines).join('\r\n')
     }).join('\r\n\r\n')
 }

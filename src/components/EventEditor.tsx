@@ -11,7 +11,7 @@ const noPrefixes = new Map<string, string>()
 
 export function EventEditor({
   draft, channel, channels, users, members, editing, template, change, submit, cancel, remove, pickUser,
-  currentRanks = noPrefixes, previewRanks = noPrefixes, existing, resolveNick,
+  currentRanks = noPrefixes, previewRanks = noPrefixes, existing, resolveNick, showRankPrefixes,
 }: {
   draft: Draft
   channel: Channel | undefined
@@ -29,6 +29,7 @@ export function EventEditor({
   previewRanks?: ReadonlyMap<string, string>
   existing?: LogEvent
   resolveNick: (nick: string) => string | undefined
+  showRankPrefixes: boolean
 }) {
   const [clock, setClock] = useState(localDateTime)
   useEffect(() => {
@@ -54,7 +55,7 @@ export function EventEditor({
       preview = renderEvent(event, channel.name, template, true, {
         actor: prefix(identities.actor),
         target: prefix(identities.target),
-      })
+      }, showRankPrefixes)
     }
   } catch {
     // An incomplete draft has no formatted preview.
@@ -77,8 +78,9 @@ export function EventEditor({
       {editing && <button className="icon-button editor-close" aria-label="取消编辑" onClick={cancel}><X size={18} /></button>}
     </div>
     {!channel ? <div className="editor-empty">创建或选择频道后即可添加事件。</div> :
-      <form className="editor-form" onSubmit={(event) => { event.preventDefault(); submit() }}>
-        <div className="editor-fields form-stack">
+      <form className={`editor-form ${editing ? 'editor-editing' : 'editor-adding'}`} onSubmit={(event) => { event.preventDefault(); submit() }}>
+        <div className="editor-fields">
+          <div className="editor-meta form-stack">
           <label>事件类型
             <select value={type} onChange={(event) => chooseType(event.target.value as EventType)}>
               {Object.entries(eventLabels).map(([key, label]) => <option key={key} value={key}>{label} · {key}</option>)}
@@ -95,6 +97,8 @@ export function EventEditor({
             onClick={() => change({ timestamp: localDateTime(), fixedTime: !draft.fixedTime })}>
             <Clock3 size={13} />{draft.fixedTime ? '已固定时间 · 恢复自动' : '使用当前时间 · 点击固定'}
           </button>}
+          </div>
+          <div className="editor-details form-stack">
           {actor && <UserPicker
             label={type === 'MESSAGE' || type === 'NOTICE' ? '发送者' : '操作者'}
             value={draft.actor} users={users} members={members} prefixes={currentRanks} optional={type === 'NETSPLIT'}
@@ -137,6 +141,7 @@ export function EventEditor({
               placeholder={type === 'MESSAGE' ? '输入一条 IRC 消息…' : `输入${bodyLabel}…`} />
           </label>}
           {preview && <div className="draft-preview"><span>格式预览</span><p>{preview}</p></div>}
+          </div>
         </div>
         <div className="editor-actions">
           <button className="primary full-width">

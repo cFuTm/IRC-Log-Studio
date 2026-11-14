@@ -26,11 +26,15 @@ function prefixFor(modes?: ReadonlySet<RankMode>): string {
   return highest ? ranks[highest].prefix : ''
 }
 
-export function sortUsersByRank(users: User[], prefixes: ReadonlyMap<string, string>): User[] {
+export function sortUsersByRank(
+  users: User[], prefixes: ReadonlyMap<string, string>, memberIds?: ReadonlySet<string>,
+): User[] {
   const priority = rankModes.map((mode) => ranks[mode].prefix)
   const position = (user: User) => (priority.indexOf(prefixes.get(user.id) ?? '') + 1) || priority.length + 1
   return [...users].sort((left, right) =>
-    position(left) - position(right) || left.nickname.localeCompare(right.nickname))
+    position(left) - position(right)
+    || Number(memberIds?.has(right.id) ?? false) - Number(memberIds?.has(left.id) ?? false)
+    || left.nickname.localeCompare(right.nickname))
 }
 
 export function serializeRankChanges(changes: readonly RankChange[]): string {
